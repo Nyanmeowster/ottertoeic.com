@@ -361,7 +361,7 @@ export default function Home() {
     setLives((n) => n + 1); setAdOpen(false); setAdSeconds(5);
   }
 
-  function speakWord(word: string, accent: "US" | "UK") {
+  async function speakWord(word: string, accent: "US" | "UK") {
     if (!("speechSynthesis" in window)) return;
     window.speechSynthesis.cancel();
     const utterance = new SpeechSynthesisUtterance(word);
@@ -371,13 +371,20 @@ export default function Home() {
       ? /samantha|victoria|ava|allison|susan|zoe|zira|aria|jenny|michelle|joanna|kendra|kimberly|female/i
       : /serena|kate|hazel|libby|sonia|emma|olivia|amy|amy uk|brianne|abbi|stephanie|moira|fiona|female|google uk english female/i;
     const normalizedLang = targetLang.toLowerCase();
-    const accentVoices = window.speechSynthesis.getVoices().filter((item) => item.lang.toLowerCase().replace("_", "-") === normalizedLang);
-    const voice = accentVoices.filter((item) => femalePattern.test(item.name))
-      .sort((a, b) => Number(qualityPattern.test(b.name)) - Number(qualityPattern.test(a.name)) || Number(b.localService) - Number(a.localService))[0];
-    if (!voice) {
-      window.alert(accent === "UK" ? "此裝置尚未安裝英國女性語音，請先在系統的語音設定中加入 English (United Kingdom) 女聲。" : "此裝置尚未安裝美國女性語音，請先在系統的語音設定中加入 English (United States) 女聲。");
-      return;
+    let voices = window.speechSynthesis.getVoices();
+    if (!voices.length) {
+      voices = await new Promise<SpeechSynthesisVoice[]>((resolve) => {
+        const timer = window.setTimeout(() => resolve(window.speechSynthesis.getVoices()), 1200);
+        window.speechSynthesis.addEventListener("voiceschanged", () => {
+          window.clearTimeout(timer);
+          resolve(window.speechSynthesis.getVoices());
+        }, { once: true });
+      });
     }
+    const accentVoices = voices.filter((item) => item.lang.toLowerCase().replace("_", "-") === normalizedLang);
+    const femaleVoice = accentVoices.filter((item) => femalePattern.test(item.name))
+      .sort((a, b) => Number(qualityPattern.test(b.name)) - Number(qualityPattern.test(a.name)) || Number(b.localService) - Number(a.localService))[0];
+    const voice = femaleVoice ?? accentVoices.sort((a, b) => Number(qualityPattern.test(b.name)) - Number(qualityPattern.test(a.name)))[0];
     utterance.lang = targetLang;
     if (voice) utterance.voice = voice;
     utterance.rate = 0.82;
