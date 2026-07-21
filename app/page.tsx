@@ -429,7 +429,6 @@ export default function Home() {
               <button className="memoir-button" onClick={() => setPhase("memory")}><span>02</span><b>回憶錄</b><small>已收藏 {memory.length} 個單字</small><i>→</i></button>
             </div>
           </div>
-          <div className="home-seal"><span>990</span><small>TOEIC THRONE</small></div>
         </section>
       ) : phase === "memory" ? (
         <section className="memory-page">
