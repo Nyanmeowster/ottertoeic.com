@@ -173,6 +173,9 @@ export default function Home() {
       setLevel(saved.level ?? "基礎");
       setAssessed(Boolean(saved.assessed));
       setLives(saved.date === dayKey() ? saved.lives : 3);
+      setPhase(saved.assessed ? "home" : "assessment");
+    } else {
+      setPhase("assessment");
     }
     setReady(true);
   }, []);
