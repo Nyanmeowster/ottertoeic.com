@@ -164,6 +164,7 @@ const AMERICAN_IPA: Record<string, string> = {
 };
 
 const LABELS: Record<Mastery, string> = { mastered: "背熟了", learning: "還不熟", new: "完全不熟" };
+const SCORE_ESTIMATE: Record<Level, string> = { 基礎: "350–545", 中階: "550–785", 進階: "790–950" };
 const LETTERS = ["A", "B", "C", "D"];
 const dayKey = () => new Date().toLocaleDateString("en-CA");
 const mix = <T,>(items: T[]) => [...items].sort(() => Math.random() - 0.5);
@@ -193,11 +194,11 @@ export default function Home() {
   const [reviewPosition, setReviewPosition] = useState(0);
   const [adOpen, setAdOpen] = useState(false);
   const [adSeconds, setAdSeconds] = useState(5);
-  const [retry, setRetry] = useState<Word[]>([]);
+  const [levelComplete, setLevelComplete] = useState(false);
 
   const assessment = useMemo(() => [WORDS[1], WORDS[3], WORDS[8], WORDS[10], WORDS[12], WORDS[16], WORDS[18], WORDS[21], WORDS[25], WORDS[28]], []);
   const pool = useMemo(() => WORDS.filter((w) => w.level === level), [level]);
-  const current = phase === "assessment" ? assessment[assessmentIndex] : retry[0] ?? pool[wordIndex % pool.length];
+  const current = phase === "assessment" ? assessment[assessmentIndex] : pool[wordIndex % pool.length];
 
   useEffect(() => {
     const saved = JSON.parse(localStorage.getItem("toeic-journal") || "null");
@@ -218,6 +219,19 @@ export default function Home() {
     if (current) setChoices(choicesFor(current));
     setSelected(null);
   }, [current]);
+
+  useEffect(() => {
+    if (!ready || phase !== "learn" || selected || !pool.length) return;
+    const remembered = new Set(memory.map((item) => item.word));
+    const nextIndex = Array.from({ length: pool.length }, (_, offset) => (wordIndex + offset) % pool.length)
+      .find((index) => !remembered.has(pool[index].word));
+    if (nextIndex === undefined) {
+      setLevelComplete(true);
+    } else {
+      setLevelComplete(false);
+      if (nextIndex !== wordIndex) setWordIndex(nextIndex);
+    }
+  }, [ready, phase, selected, pool, memory, wordIndex]);
 
   useEffect(() => {
     if (!ready) return;
@@ -249,8 +263,7 @@ export default function Home() {
     addMemory(correct);
     if (!correct) {
       setLives((n) => Math.max(0, n - 1));
-      setRetry((q) => q.some((w) => w.word === current.word) ? q : [...q, current]);
-    } else if (retry[0]?.word === current.word) setRetry((q) => q.slice(1));
+    }
   }
 
   function next() {
@@ -262,7 +275,7 @@ export default function Home() {
         setAssessed(true);
         setPhase("learn");
       } else setAssessmentIndex((n) => n + 1);
-    } else if (!retry.length || retry[0].word !== current.word) setWordIndex((n) => n + 1);
+    } else setWordIndex((n) => n + 1);
     setSelected(null);
   }
 
@@ -326,14 +339,20 @@ export default function Home() {
     setLives((n) => n + 1); setAdOpen(false); setAdSeconds(5);
   }
 
-  function speakWord(word: string) {
+  function speakWord(word: string, accent: "US" | "UK") {
     if (!("speechSynthesis" in window)) return;
     window.speechSynthesis.cancel();
     const utterance = new SpeechSynthesisUtterance(word);
-    const americanVoice = window.speechSynthesis.getVoices().find((voice) => voice.lang.toLowerCase() === "en-us");
-    utterance.lang = "en-US";
-    if (americanVoice) utterance.voice = americanVoice;
-    utterance.rate = 0.85;
+    const targetLang = accent === "US" ? "en-US" : "en-GB";
+    const qualityPattern = /premium|enhanced|natural|neural|google|microsoft|samantha|ava|serena|daniel/i;
+    const voice = window.speechSynthesis.getVoices()
+      .filter((item) => item.lang.toLowerCase() === targetLang.toLowerCase())
+      .sort((a, b) => Number(qualityPattern.test(b.name)) - Number(qualityPattern.test(a.name)) || Number(b.localService) - Number(a.localService))[0];
+    utterance.lang = targetLang;
+    if (voice) utterance.voice = voice;
+    utterance.rate = 0.82;
+    utterance.pitch = 1;
+    utterance.volume = 1;
     window.speechSynthesis.speak(utterance);
   }
 
@@ -372,7 +391,7 @@ export default function Home() {
             <h1>煞氣 a 水獺教教主</h1>
             <p>挑戰多益單字試煉，把每一次答題寫入你的江湖秘笈。</p>
             <div className="home-actions">
-              <button className="challenge-button" onClick={() => setPhase(assessed ? "learn" : "assessment")}><span>01</span><b>挑戰新單字</b><small>{assessed ? `${level}難度 · 繼續試煉` : "先完成十題程度測驗"}</small><i>→</i></button>
+              <button className="challenge-button" onClick={() => setPhase(assessed ? "learn" : "assessment")}><span>01</span><b>挑戰新單字</b><small>{assessed ? `${level} · 預估 TOEIC ${SCORE_ESTIMATE[level]}` : "先完成十題程度測驗"}</small><i>→</i></button>
               <button className="memoir-button" onClick={() => setPhase("memory")}><span>02</span><b>回憶錄</b><small>已收藏 {memory.length} 個單字</small><i>→</i></button>
             </div>
           </div>
@@ -381,12 +400,12 @@ export default function Home() {
       ) : phase === "memory" ? (
         <section className="memory-page">
           <div className="section-kicker">THE FORBIDDEN JIANGHU ARCHIVE</div>
-          <div className="memory-heading"><div><h1>多益武林秘笈</h1><p>每一次答題都會載入武林秘笈。這裡複習答錯，也不會失去愛心。</p></div><div className="memory-total"><b>{memory.length}</b><span>已收錄招式</span></div></div>
+          <div className="memory-heading"><div><h1>多益武林秘笈</h1><p>每一次答題都會載入武林秘笈。這裡複習答錯，也不會失去愛心。</p></div><div className="memory-total"><b>{memory.length}</b><span>已收錄心法</span></div></div>
           <div className="filters">
             <button className={filter === "all" ? "selected" : ""} onClick={() => setFilter("all")}>全部 <span>{memory.length}</span></button>
             {(["mastered", "learning", "new"] as Mastery[]).map((key) => { const count = memory.filter((x) => x.mastery === key).length; return <div className="filter-pair" key={key}><button className={filter === key ? "selected" : ""} onClick={() => setFilter(key)}>{LABELS[key]} <span>{count}</span></button><button className="review-launch" disabled={!count} onClick={() => startCategoryReview(key)}>↻ 隨機複習</button></div>; })}
           </div>
-          {visibleMemory.length ? <div className="word-grid">{visibleMemory.map((item) => <article className="word-tile" key={item.word}><button className="word-open" onClick={() => openReview(item)} aria-label={`複習 ${item.word}`}><div><span className={`dot ${item.mastery}`} />{LABELS[item.mastery]}</div><h2>{item.word}</h2><p className="tile-phonetic"><strong>{item.pos}</strong><span>{AMERICAN_IPA[item.word]}</span></p><p className="tile-meaning">{item.meaning}</p><small>{item.correct ? "最近答對" : "最近答錯"} · 練習 {item.attempts} 次</small><b>↗</b></button><button className="tile-audio" onClick={() => speakWord(item.word)} aria-label={`播放 ${item.word} 美式發音`}>🔊</button></article>)}</div> : <div className="empty"><b>還沒有這一類單字</b><p>回到今日學習，回答一題後就會收藏在這裡。</p></div>}
+          {visibleMemory.length ? <div className="word-grid">{visibleMemory.map((item) => <article className="word-tile" key={item.word}><button className="word-open" onClick={() => openReview(item)} aria-label={`複習 ${item.word}`}><div><span className={`dot ${item.mastery}`} />{LABELS[item.mastery]}</div><h2>{item.word}</h2><p className="tile-phonetic"><strong>{item.pos}</strong><span>{AMERICAN_IPA[item.word]}</span></p><p className="tile-meaning">{item.meaning}</p><small>{item.correct ? "最近答對" : "最近答錯"} · 練習 {item.attempts} 次</small><b className="open-arrow">↗</b></button><div className="tile-audio-group"><button className="tile-audio" onClick={() => speakWord(item.word, "US")} aria-label={`播放 ${item.word} 美式發音`}>美 🔊</button><button className="tile-audio" onClick={() => speakWord(item.word, "UK")} aria-label={`播放 ${item.word} 英式發音`}>英 🔊</button></div></article>)}</div> : <div className="empty"><b>還沒有這一類單字</b><p>回到今日學習，回答一題後就會收藏在這裡。</p></div>}
         </section>
       ) : (
         <section className="study-page">
@@ -394,16 +413,16 @@ export default function Home() {
             <div className="section-kicker">{phase === "assessment" ? "THE TRIAL OF TEN" : "TODAY'S QUEST"}</div>
             <h1>{phase === "assessment" ? "踏入 990 分之座" : "今天，征服一個單字。"}</h1>
             <p>{phase === "assessment" ? "接受十題試煉，水獺教主將辨識你的單字內力。程度測驗答錯不扣愛心。" : "答對，將單字收入武林秘笈；答錯，它會在命運的下一戰再次現身。"}</p>
-            <div className="session-stat"><span>{phase === "assessment" ? `${assessmentIndex + 1} / 10` : level}</span><small>{phase === "assessment" ? "程度測驗" : "目前程度"}</small></div>
+            <div className="session-stat"><span>{phase === "assessment" ? `${assessmentIndex + 1} / 10` : level}</span><small>{phase === "assessment" ? "程度測驗" : `預估 TOEIC ${SCORE_ESTIMATE[level]}`}</small></div>
             <div className="quote">“Every word is a secret technique.”</div>
           </aside>
 
           <div className="quiz-wrap">
-            <div className="quiz-meta"><span>{phase === "assessment" ? `程度測驗 · ${assessmentIndex + 1} / 10` : retry.length ? "錯題再次出現" : `${level}單字 · 今日學習`}</span><span className="progress-line"><i style={{ width: phase === "assessment" ? `${(assessmentIndex + 1) * 10}%` : "42%" }} /></span></div>
-            <article className="card">
+            <div className="quiz-meta"><span>{phase === "assessment" ? `程度測驗 · ${assessmentIndex + 1} / 10` : `${level}單字 · 預估 TOEIC ${SCORE_ESTIMATE[level]}`}</span><span className="progress-line"><i style={{ width: phase === "assessment" ? `${(assessmentIndex + 1) * 10}%` : `${Math.min(100, memory.filter((item) => item.level === level).length / pool.length * 100)}%` }} /></span></div>
+            {levelComplete && phase === "learn" ? <article className="completion-card"><span>本級心法修習完畢</span><h2>{level}單字，全數收入秘笈</h2><p>預估 TOEIC 成績：<b>{SCORE_ESTIMATE[level]}</b></p><button onClick={() => setPhase("memory")}>前往回憶錄總複習 →</button></article> : <><article className="card">
               <div className="card-no">{String(phase === "assessment" ? assessmentIndex + 1 : wordIndex + 1).padStart(2, "0")}</div>
-              <h2>{current.word}<button className="pronounce-button" onClick={() => speakWord(current.word)} aria-label={`播放 ${current.word} 美式發音`}>🔊</button></h2>
-              <div className="word-details"><strong>{current.pos}</strong><span>{AMERICAN_IPA[current.word]}</span><small>美式</small></div>
+              <h2>{current.word}<span className="pronounce-group"><button className="pronounce-button" onClick={() => speakWord(current.word, "US")} aria-label={`播放 ${current.word} 美式發音`}>美 🔊</button><button className="pronounce-button" onClick={() => speakWord(current.word, "UK")} aria-label={`播放 ${current.word} 英式發音`}>英 🔊</button></span></h2>
+              <div className="word-details"><strong>{current.pos}</strong><span>{AMERICAN_IPA[current.word]}</span><small>美式音標</small></div>
               <p className="prompt">請選出最適合的中文意思</p>
               <div className="answers">{choices.map((choice, i) => {
                 const state = selected ? choice === current.meaning ? "correct" : choice === selected ? "wrong" : "muted" : "";
@@ -412,12 +431,12 @@ export default function Home() {
               {selected && <div className={`feedback ${correct ? "good" : "bad"}`}><b>{correct ? "答對了，漂亮！" : `正確答案是「${current.meaning}」`}</b><p><strong>英文例句</strong>{current.example}</p></div>}
             </article>
             {selected && (phase === "learn" ? <div className="classify"><span>這個字對你來說…</span>{(["mastered", "learning", "new"] as Mastery[]).map((key) => <button key={key} onClick={() => classify(key)}>{key === "mastered" ? "✓" : key === "learning" ? "◐" : "○"} {LABELS[key]}</button>)}</div> : <button className="next-button" onClick={next}>{assessmentIndex === 9 ? "查看我的程度" : "下一題 →"}</button>)}
-            {phase === "learn" && lives <= 0 && !selected && <div className="out"><b>今天的 3 次機會用完了</b><p>看一則短廣告，即可增加 1 次作答機會。</p><button onClick={watchAd}>▶ 看廣告 · +1 次機會</button></div>}
+            {phase === "learn" && lives <= 0 && !selected && <div className="out"><b>今天的 3 次機會用完了</b><p>看一則短廣告，即可增加 1 次作答機會。</p><button onClick={watchAd}>▶ 看廣告 · +1 次機會</button></div>}</>}
           </div>
         </section>
       )}
 
-      {reviewWord && <div className="modal-backdrop" onClick={closeReview}><div className="review-modal" onClick={(e) => e.stopPropagation()}><button className="close" onClick={closeReview}>×</button><div className="review-topline"><span className="pos">回憶錄複習{reviewQueue.length ? ` · ${reviewPosition + 1}/${reviewQueue.length}` : ""}</span><span>♥ 不扣愛心</span></div><h2>{reviewWord.word}<button className="pronounce-button" onClick={() => speakWord(reviewWord.word)} aria-label={`播放 ${reviewWord.word} 美式發音`}>🔊</button></h2><div className="word-details"><strong>{reviewWord.pos}</strong><span>{AMERICAN_IPA[reviewWord.word]}</span><small>美式</small></div><p className="review-prompt">請選出最適合的中文意思</p><div className="answers review-answers">{reviewChoices.map((choice, i) => { const state = reviewSelected ? choice === reviewWord.meaning ? "correct" : choice === reviewSelected ? "wrong" : "muted" : ""; return <button key={choice} className={state} onClick={() => answerReview(choice)}><b>{LETTERS[i]}</b><span>{choice}</span>{state === "correct" && <i>✓</i>}{state === "wrong" && <i>×</i>}</button>; })}</div>{reviewSelected && <><div className={`feedback ${reviewSelected === reviewWord.meaning ? "good" : "bad"}`}><b>{reviewSelected === reviewWord.meaning ? "答對了，記得很清楚！" : `答錯了，正確答案是「${reviewWord.meaning}」`}</b><p><strong>英文例句</strong>{reviewWord.example}</p></div><div className="review-note">本次複習不扣除任何愛心 · 請重新標記熟悉程度</div><div className="modal-actions">{(["mastered", "learning", "new"] as Mastery[]).map((key) => <button className={reviewWord.mastery === key ? "chosen" : ""} key={key} onClick={() => { setMemory((list) => list.map((x) => x.word === reviewWord.word ? { ...x, mastery: key } : x)); setReviewWord({ ...reviewWord, mastery: key }); }}>{LABELS[key]}</button>)}</div>{reviewQueue.length > 0 && <button className="review-next" onClick={nextCategoryReview}>{reviewPosition + 1 >= reviewQueue.length ? "完成這次複習 ✓" : "下一個隨機單字 →"}</button>}</>}</div></div>}
+      {reviewWord && <div className="modal-backdrop" onClick={closeReview}><div className="review-modal" onClick={(e) => e.stopPropagation()}><button className="close" onClick={closeReview}>×</button><div className="review-topline"><span className="pos">回憶錄複習{reviewQueue.length ? ` · ${reviewPosition + 1}/${reviewQueue.length}` : ""}</span><span>♥ 不扣愛心</span></div><h2>{reviewWord.word}<span className="pronounce-group"><button className="pronounce-button" onClick={() => speakWord(reviewWord.word, "US")} aria-label={`播放 ${reviewWord.word} 美式發音`}>美 🔊</button><button className="pronounce-button" onClick={() => speakWord(reviewWord.word, "UK")} aria-label={`播放 ${reviewWord.word} 英式發音`}>英 🔊</button></span></h2><div className="word-details"><strong>{reviewWord.pos}</strong><span>{AMERICAN_IPA[reviewWord.word]}</span><small>美式音標</small></div><p className="review-prompt">請選出最適合的中文意思</p><div className="answers review-answers">{reviewChoices.map((choice, i) => { const state = reviewSelected ? choice === reviewWord.meaning ? "correct" : choice === reviewSelected ? "wrong" : "muted" : ""; return <button key={choice} className={state} onClick={() => answerReview(choice)}><b>{LETTERS[i]}</b><span>{choice}</span>{state === "correct" && <i>✓</i>}{state === "wrong" && <i>×</i>}</button>; })}</div>{reviewSelected && <><div className={`feedback ${reviewSelected === reviewWord.meaning ? "good" : "bad"}`}><b>{reviewSelected === reviewWord.meaning ? "答對了，記得很清楚！" : `答錯了，正確答案是「${reviewWord.meaning}」`}</b><p><strong>英文例句</strong>{reviewWord.example}</p></div><div className="review-note">本次複習不扣除任何愛心 · 請重新標記熟悉程度</div><div className="modal-actions">{(["mastered", "learning", "new"] as Mastery[]).map((key) => <button className={reviewWord.mastery === key ? "chosen" : ""} key={key} onClick={() => { setMemory((list) => list.map((x) => x.word === reviewWord.word ? { ...x, mastery: key } : x)); setReviewWord({ ...reviewWord, mastery: key }); }}>{LABELS[key]}</button>)}</div>{reviewQueue.length > 0 && <button className="review-next" onClick={nextCategoryReview}>{reviewPosition + 1 >= reviewQueue.length ? "完成這次複習 ✓" : "下一個隨機單字 →"}</button>}</>}</div></div>}
 
       {adOpen && <div className="modal-backdrop"><div className="ad-modal"><div className="ad-label">ADVERTISEMENT</div><div className="fake-ad"><b>FOCUS.</b><p>Good habits build great results.</p></div>{adSeconds > 0 ? <p>廣告將在 {adSeconds} 秒後結束…</p> : <button onClick={finishAd}>領取 +1 次機會</button>}</div></div>}
     </main>
