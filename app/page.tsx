@@ -207,6 +207,7 @@ export default function Home() {
   const [level, setLevel] = useState<Level>("基礎");
   const [wordIndex, setWordIndex] = useState(0);
   const [selected, setSelected] = useState<string | null>(null);
+  const [confirmed, setConfirmed] = useState(false);
   const [choices, setChoices] = useState<string[]>([]);
   const [lives, setLives] = useState(3);
   const [memory, setMemory] = useState<Memory[]>([]);
@@ -244,6 +245,7 @@ export default function Home() {
   useEffect(() => {
     if (current) setChoices(choicesFor(current));
     setSelected(null);
+    setConfirmed(false);
   }, [current]);
 
   useEffect(() => {
@@ -279,9 +281,14 @@ export default function Home() {
   }
 
   function answer(choice: string) {
-    if (selected || (phase === "learn" && lives <= 0)) return;
+    if (confirmed || (phase === "learn" && lives <= 0)) return;
     setSelected(choice);
-    const correct = choice === current.meaning;
+  }
+
+  function confirmAnswer() {
+    if (!selected || confirmed || (phase === "learn" && lives <= 0)) return;
+    setConfirmed(true);
+    const correct = selected === current.meaning;
     if (phase === "assessment") {
       if (correct) setAssessmentScore((n) => n + 1);
       return;
@@ -303,6 +310,7 @@ export default function Home() {
       } else setAssessmentIndex((n) => n + 1);
     } else setWordIndex((n) => n + 1);
     setSelected(null);
+    setConfirmed(false);
   }
 
   function classify(mastery: Mastery) {
@@ -457,13 +465,14 @@ export default function Home() {
               <div className="word-details"><span><b>美</b>{AMERICAN_IPA[current.word]}<button className="pronounce-button" onClick={() => speakWord(current.word, "US")} aria-label={`播放 ${current.word} 美式發音`}>🔊</button></span><span><b>英</b>{britishIpa(current.word)}<button className="pronounce-button" onClick={() => speakWord(current.word, "UK")} aria-label={`播放 ${current.word} 英式發音`}>🔊</button></span></div>
               <p className="prompt">請選出最適合的中文意思</p>
               <div className="answers">{choices.map((choice, i) => {
-                const state = selected ? choice === current.meaning ? "correct" : choice === selected ? "wrong" : "muted" : "";
+                const state = confirmed ? choice === current.meaning ? "correct" : choice === selected ? "wrong" : "muted" : choice === selected ? "pending" : "";
                 return <button key={choice} className={state} onClick={() => answer(choice)}><b>{LETTERS[i]}</b><span>{choice}</span>{state === "correct" && <i>✓</i>}{state === "wrong" && <i>×</i>}</button>;
               })}</div>
-              {selected && <div className={`feedback ${correct ? "good" : "bad"}`}><b>{correct ? "答對了，漂亮！" : `正確答案是「${current.meaning}」`}</b><p><strong>英文例句</strong>{current.example}</p></div>}
+              {!confirmed && <button className="confirm-answer" disabled={!selected} onClick={confirmAnswer}>{selected ? "確認答案" : "請先選擇答案"}</button>}
+              {confirmed && <div className={`feedback ${correct ? "good" : "bad"}`}><b>{correct ? "答對了，漂亮！" : `正確答案是「${current.meaning}」`}</b><p><strong>英文例句</strong>{current.example}</p></div>}
             </article>
-            {selected && (phase === "learn" ? <div className="classify"><span>這個字對你來說…</span>{(["mastered", "learning", "new"] as Mastery[]).map((key) => <button className={`mastery-${key}`} key={key} onClick={() => classify(key)}>{key === "mastered" ? "◆" : key === "learning" ? "◐" : "◇"} {LABELS[key]}</button>)}</div> : <button className="next-button" onClick={next}>{assessmentIndex === 9 ? "查看我的程度" : "下一題 →"}</button>)}
-            {phase === "learn" && lives <= 0 && !selected && <div className="out"><b>今天的 3 次機會用完了</b><p>看一則短廣告，即可增加 1 次作答機會。</p><button onClick={watchAd}>▶ 看廣告 · +1 次機會</button></div>}</>}
+            {confirmed && (phase === "learn" ? <div className="classify"><span>這個字對你來說…</span>{(["mastered", "learning", "new"] as Mastery[]).map((key) => <button className={`mastery-${key}`} key={key} onClick={() => classify(key)}>{key === "mastered" ? "◆" : key === "learning" ? "◐" : "◇"} {LABELS[key]}</button>)}</div> : <button className="next-button" onClick={next}>{assessmentIndex === 9 ? "查看我的程度" : "下一題 →"}</button>)}
+            {phase === "learn" && lives <= 0 && !confirmed && <div className="out"><b>今天的 3 次機會用完了</b><p>看一則短廣告，即可增加 1 次作答機會。</p><button onClick={watchAd}>▶ 看廣告 · +1 次機會</button></div>}</>}
           </div>
         </section>
       )}
