@@ -194,6 +194,8 @@ function choicesFor(item: Word) {
   return mix([item.meaning, ...wrong]);
 }
 
+let activePronunciation: HTMLAudioElement | null = null;
+
 export default function Home() {
   const [ready, setReady] = useState(false);
   const [phase, setPhase] = useState<"home" | "assessment" | "learn" | "memory">("home");
@@ -361,44 +363,12 @@ export default function Home() {
     setLives((n) => n + 1); setAdOpen(false); setAdSeconds(5);
   }
 
-  async function speakWord(word: string, accent: "US" | "UK") {
-    if (!("speechSynthesis" in window)) return;
-    window.speechSynthesis.cancel();
-    const utterance = new SpeechSynthesisUtterance(word);
-    const targetLang = accent === "US" ? "en-US" : "en-GB";
-    const qualityPattern = /premium|enhanced|natural|neural/i;
-    const femalePattern = accent === "US"
-      ? /samantha|victoria|ava|allison|susan|zoe|zira|aria|jenny|michelle|joanna|kendra|kimberly|female/i
-      : /serena|kate|hazel|libby|sonia|emma|olivia|amy|amy uk|brianne|abbi|stephanie|moira|fiona|female|google uk english female/i;
-    const normalizedLang = targetLang.toLowerCase();
-    let voices = window.speechSynthesis.getVoices();
-    if (!voices.length) {
-      voices = await new Promise<SpeechSynthesisVoice[]>((resolve) => {
-        const timer = window.setTimeout(() => resolve(window.speechSynthesis.getVoices()), 1200);
-        window.speechSynthesis.addEventListener("voiceschanged", () => {
-          window.clearTimeout(timer);
-          resolve(window.speechSynthesis.getVoices());
-        }, { once: true });
-      });
-    }
-    const accentVoices = voices.filter((item) => item.lang.toLowerCase().replace("_", "-") === normalizedLang);
-    const britishPreference = (name: string) => {
-      if (/serena/i.test(name)) return 50;
-      if (/sonia/i.test(name)) return 40;
-      if (/libby/i.test(name)) return 35;
-      if (/stephanie/i.test(name)) return 30;
-      if (/google uk english female/i.test(name)) return 25;
-      return 0;
-    };
-    const femaleVoice = accentVoices.filter((item) => femalePattern.test(item.name))
-      .sort((a, b) => (accent === "UK" ? britishPreference(b.name) - britishPreference(a.name) : 0) || Number(qualityPattern.test(b.name)) - Number(qualityPattern.test(a.name)) || Number(b.localService) - Number(a.localService))[0];
-    const voice = femaleVoice ?? accentVoices.sort((a, b) => Number(qualityPattern.test(b.name)) - Number(qualityPattern.test(a.name)))[0];
-    utterance.lang = targetLang;
-    if (voice) utterance.voice = voice;
-    utterance.rate = accent === "UK" ? 0.78 : 0.82;
-    utterance.pitch = accent === "UK" ? 1.04 : 1.08;
-    utterance.volume = 1;
-    window.speechSynthesis.speak(utterance);
+  function speakWord(word: string, accent: "US" | "UK") {
+    activePronunciation?.pause();
+    const region = accent === "US" ? "us" : "uk";
+    const audio = new Audio(`/audio/${region}/${word}.wav`);
+    activePronunciation = audio;
+    void audio.play();
   }
 
   function resetProgress() {
