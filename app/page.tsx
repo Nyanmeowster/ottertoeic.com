@@ -406,7 +406,7 @@ export default function Home() {
     <main>
       <header className="topbar">
         <button className="brand" onClick={() => phase !== "assessment" && setPhase("home")} aria-label="回到主畫面">
-          <span className="brand-mark" aria-hidden="true"><i /><i /><i /><i /><em /></span><span>OTTER TOEIC<br />JIANGHU MANUAL</span>
+          <span className="brand-mark" aria-hidden="true"><i /><i /><i /><i /><em /></span>
         </button>
         <nav>
           <button disabled={phase === "assessment"} className={phase === "learn" ? "active" : ""} onClick={() => setPhase(assessed ? "learn" : "assessment")}>今日學習</button>
@@ -433,7 +433,6 @@ export default function Home() {
         </section>
       ) : phase === "memory" ? (
         <section className="memory-page">
-          <div className="section-kicker">THE FORBIDDEN JIANGHU ARCHIVE</div>
           <div className="memory-heading"><div><h1>多益武林秘笈</h1><p>每一次答題都會載入武林秘笈。這裡複習答錯，也不會失去愛心。</p></div><div className="memory-total"><b>{memory.length}</b><span>已收錄心法</span></div></div>
           <div className="filters">
             <button className={filter === "all" ? "selected" : ""} onClick={() => setFilter("all")}>全部 <span>{memory.length}</span></button>
