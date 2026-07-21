@@ -163,7 +163,7 @@ const AMERICAN_IPA: Record<string, string> = {
   substantial: "/səbˈstænʃəl/", unprecedented: "/ʌnˈpresədentɪd/", viable: "/ˈvaɪəbəl/", waive: "/weɪv/",
 };
 
-const LABELS: Record<Mastery, string> = { mastered: "已融會貫通", learning: "尚在參悟", new: "尚未入門" };
+const LABELS: Record<Mastery, string> = { mastered: "融會貫通", learning: "尚在參悟", new: "尚未入門" };
 const BRITISH_IPA_OVERRIDES: Record<string, string> = {
   schedule: "/ˈʃedjuːl/", inventory: "/ˈɪnvəntri/", warehouse: "/ˈweəhaʊs/", purchase: "/ˈpɜːtʃəs/",
   confirm: "/kənˈfɜːm/", reimburse: "/ˌriːɪmˈbɜːs/", inadvertently: "/ˌɪnədˈvɜːtəntli/",
@@ -384,7 +384,7 @@ export default function Home() {
     const source = pronunciationContext.createBufferSource();
     const gain = pronunciationContext.createGain();
     source.buffer = buffer;
-    gain.gain.value = Math.min(2, 0.14 / rms);
+    gain.gain.value = Math.min(2, (0.14 / rms) * (accent === "UK" ? 1.2 : 1));
     source.connect(gain).connect(pronunciationContext.destination);
     source.start();
     activePronunciation = source;
@@ -406,7 +406,7 @@ export default function Home() {
     <main>
       <header className="topbar">
         <button className="brand" onClick={() => phase !== "assessment" && setPhase("home")} aria-label="回到主畫面">
-          <span className="brand-mark" aria-hidden="true" /><span>OTTER TOEIC<br />JIANGHU MANUAL</span>
+          <span className="brand-mark" aria-hidden="true"><i /><i /><i /><i /><em /></span><span>OTTER TOEIC<br />JIANGHU MANUAL</span>
         </button>
         <nav>
           <button disabled={phase === "assessment"} className={phase === "learn" ? "active" : ""} onClick={() => setPhase(assessed ? "learn" : "assessment")}>今日學習</button>
