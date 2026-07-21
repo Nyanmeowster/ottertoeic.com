@@ -382,13 +382,21 @@ export default function Home() {
       });
     }
     const accentVoices = voices.filter((item) => item.lang.toLowerCase().replace("_", "-") === normalizedLang);
+    const britishPreference = (name: string) => {
+      if (/serena/i.test(name)) return 50;
+      if (/sonia/i.test(name)) return 40;
+      if (/libby/i.test(name)) return 35;
+      if (/stephanie/i.test(name)) return 30;
+      if (/google uk english female/i.test(name)) return 25;
+      return 0;
+    };
     const femaleVoice = accentVoices.filter((item) => femalePattern.test(item.name))
-      .sort((a, b) => Number(qualityPattern.test(b.name)) - Number(qualityPattern.test(a.name)) || Number(b.localService) - Number(a.localService))[0];
+      .sort((a, b) => (accent === "UK" ? britishPreference(b.name) - britishPreference(a.name) : 0) || Number(qualityPattern.test(b.name)) - Number(qualityPattern.test(a.name)) || Number(b.localService) - Number(a.localService))[0];
     const voice = femaleVoice ?? accentVoices.sort((a, b) => Number(qualityPattern.test(b.name)) - Number(qualityPattern.test(a.name)))[0];
     utterance.lang = targetLang;
     if (voice) utterance.voice = voice;
-    utterance.rate = 0.82;
-    utterance.pitch = 1.08;
+    utterance.rate = accent === "UK" ? 0.78 : 0.82;
+    utterance.pitch = accent === "UK" ? 1.04 : 1.08;
     utterance.volume = 1;
     window.speechSynthesis.speak(utterance);
   }
