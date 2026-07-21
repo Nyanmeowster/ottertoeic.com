@@ -169,11 +169,12 @@ export default function Home() {
   useEffect(() => {
     const saved = JSON.parse(localStorage.getItem("toeic-journal") || "null");
     if (saved) {
+      const hasCurrentAssessment = saved.assessed && saved.assessmentVersion === 1;
       setMemory(saved.memory ?? []);
       setLevel(saved.level ?? "基礎");
-      setAssessed(Boolean(saved.assessed));
+      setAssessed(Boolean(hasCurrentAssessment));
       setLives(saved.date === dayKey() ? saved.lives : 3);
-      setPhase(saved.assessed ? "home" : "assessment");
+      setPhase(hasCurrentAssessment ? "home" : "assessment");
     } else {
       setPhase("assessment");
     }
@@ -187,7 +188,7 @@ export default function Home() {
 
   useEffect(() => {
     if (!ready) return;
-    localStorage.setItem("toeic-journal", JSON.stringify({ memory, level, assessed, lives, date: dayKey() }));
+    localStorage.setItem("toeic-journal", JSON.stringify({ memory, level, assessed, assessmentVersion: 1, lives, date: dayKey() }));
   }, [memory, level, assessed, lives, ready]);
 
   useEffect(() => {
