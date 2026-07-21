@@ -289,6 +289,12 @@ export default function Home() {
     setLives((n) => n + 1); setAdOpen(false); setAdSeconds(5);
   }
 
+  function resetProgress() {
+    if (!window.confirm("確定要清除所有學習進度，重新進行十題程度測驗嗎？")) return;
+    localStorage.removeItem("toeic-journal");
+    window.location.reload();
+  }
+
   if (!ready) return <main className="loading">正在準備你的單字卡…</main>;
   const visibleMemory = memory.filter((x) => filter === "all" || x.mastery === filter);
   const correct = selected === current.meaning;
@@ -303,7 +309,10 @@ export default function Home() {
           <button disabled={phase === "assessment"} className={phase === "learn" ? "active" : ""} onClick={() => setPhase(assessed ? "learn" : "assessment")}>今日學習</button>
           <button disabled={phase === "assessment"} className={phase === "memory" ? "active" : ""} onClick={() => setPhase("memory")}>回憶錄 <span>{memory.length}</span></button>
         </nav>
-        <div className="lives" aria-label={`剩餘 ${lives} 次機會`}><i>♥</i> {lives}<small> / 今日機會</small></div>
+        <div className="topbar-actions">
+          <div className="lives" aria-label={`剩餘 ${lives} 次機會`}><i>♥</i> {lives}<small> / 今日機會</small></div>
+          <button className="reset-button" onClick={resetProgress} title="清除所有學習進度">重置</button>
+        </div>
       </header>
 
       {phase === "home" ? (
