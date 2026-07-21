@@ -153,6 +153,8 @@ export default function Home() {
   const [memory, setMemory] = useState<Memory[]>([]);
   const [filter, setFilter] = useState<"all" | Mastery>("all");
   const [reviewWord, setReviewWord] = useState<Memory | null>(null);
+  const [reviewChoices, setReviewChoices] = useState<string[]>([]);
+  const [reviewSelected, setReviewSelected] = useState<string | null>(null);
   const [adOpen, setAdOpen] = useState(false);
   const [adSeconds, setAdSeconds] = useState(5);
   const [retry, setRetry] = useState<Word[]>([]);
@@ -231,6 +233,20 @@ export default function Home() {
   function watchAd() {
     setAdOpen(true); setAdSeconds(5);
   }
+
+  function openReview(item: Memory) {
+    setReviewWord(item);
+    setReviewChoices(choicesFor(item));
+    setReviewSelected(null);
+  }
+
+  function answerReview(choice: string) {
+    if (!reviewWord || reviewSelected) return;
+    const isCorrect = choice === reviewWord.meaning;
+    setReviewSelected(choice);
+    setMemory((list) => list.map((x) => x.word === reviewWord.word ? { ...x, correct: isCorrect, attempts: x.attempts + 1 } : x));
+    setReviewWord((item) => item ? { ...item, correct: isCorrect, attempts: item.attempts + 1 } : item);
+  }
   function finishAd() {
     setLives((n) => n + 1); setAdOpen(false); setAdSeconds(5);
   }
@@ -259,7 +275,7 @@ export default function Home() {
           <div className="filters">
             {(["all", "mastered", "learning", "new"] as const).map((key) => <button key={key} className={filter === key ? "selected" : ""} onClick={() => setFilter(key)}>{key === "all" ? "全部" : LABELS[key]} <span>{key === "all" ? memory.length : memory.filter((x) => x.mastery === key).length}</span></button>)}
           </div>
-          {visibleMemory.length ? <div className="word-grid">{visibleMemory.map((item) => <button className="word-tile" key={item.word} onClick={() => setReviewWord(item)}><div><span className={`dot ${item.mastery}`} />{LABELS[item.mastery]}</div><h2>{item.word}</h2><p>{item.pos} {item.meaning}</p><small>{item.correct ? "最近答對" : "最近答錯"} · 練習 {item.attempts} 次</small><b>↗</b></button>)}</div> : <div className="empty"><b>還沒有這一類單字</b><p>回到今日學習，回答一題後就會收藏在這裡。</p></div>}
+          {visibleMemory.length ? <div className="word-grid">{visibleMemory.map((item) => <button className="word-tile" key={item.word} onClick={() => openReview(item)}><div><span className={`dot ${item.mastery}`} />{LABELS[item.mastery]}</div><h2>{item.word}</h2><p>{item.pos} {item.meaning}</p><small>{item.correct ? "最近答對" : "最近答錯"} · 練習 {item.attempts} 次</small><b>↗</b></button>)}</div> : <div className="empty"><b>還沒有這一類單字</b><p>回到今日學習，回答一題後就會收藏在這裡。</p></div>}
         </section>
       ) : (
         <section className="study-page">
@@ -290,7 +306,7 @@ export default function Home() {
         </section>
       )}
 
-      {reviewWord && <div className="modal-backdrop" onClick={() => setReviewWord(null)}><div className="review-modal" onClick={(e) => e.stopPropagation()}><button className="close" onClick={() => setReviewWord(null)}>×</button><span className="pos">{reviewWord.pos}</span><h2>{reviewWord.word}</h2><h3>{reviewWord.meaning}</h3><p>{reviewWord.example}</p><div className="review-note">回憶錄複習模式 · 答錯不扣機會</div><div className="modal-actions">{(["mastered", "learning", "new"] as Mastery[]).map((key) => <button className={reviewWord.mastery === key ? "chosen" : ""} key={key} onClick={() => { setMemory((list) => list.map((x) => x.word === reviewWord.word ? { ...x, mastery: key } : x)); setReviewWord({ ...reviewWord, mastery: key }); }}>{LABELS[key]}</button>)}</div></div></div>}
+      {reviewWord && <div className="modal-backdrop" onClick={() => setReviewWord(null)}><div className="review-modal" onClick={(e) => e.stopPropagation()}><button className="close" onClick={() => setReviewWord(null)}>×</button><div className="review-topline"><span className="pos">回憶錄複習 · {reviewWord.pos}</span><span>♥ 不扣愛心</span></div><h2>{reviewWord.word}</h2><p className="review-prompt">請選出最適合的中文意思</p><div className="answers review-answers">{reviewChoices.map((choice, i) => { const state = reviewSelected ? choice === reviewWord.meaning ? "correct" : choice === reviewSelected ? "wrong" : "muted" : ""; return <button key={choice} className={state} onClick={() => answerReview(choice)}><b>{LETTERS[i]}</b><span>{choice}</span>{state === "correct" && <i>✓</i>}{state === "wrong" && <i>×</i>}</button>; })}</div>{reviewSelected && <><div className={`feedback ${reviewSelected === reviewWord.meaning ? "good" : "bad"}`}><b>{reviewSelected === reviewWord.meaning ? "答對了，記得很清楚！" : `答錯了，正確答案是「${reviewWord.meaning}」`}</b><p>{reviewWord.example}</p></div><div className="review-note">本次複習不扣除任何愛心 · 請重新標記熟悉程度</div><div className="modal-actions">{(["mastered", "learning", "new"] as Mastery[]).map((key) => <button className={reviewWord.mastery === key ? "chosen" : ""} key={key} onClick={() => { setMemory((list) => list.map((x) => x.word === reviewWord.word ? { ...x, mastery: key } : x)); setReviewWord({ ...reviewWord, mastery: key }); }}>{LABELS[key]}</button>)}</div></>}</div></div>}
 
       {adOpen && <div className="modal-backdrop"><div className="ad-modal"><div className="ad-label">ADVERTISEMENT</div><div className="fake-ad"><b>FOCUS.</b><p>Good habits build great results.</p></div>{adSeconds > 0 ? <p>廣告將在 {adSeconds} 秒後結束…</p> : <button onClick={finishAd}>領取 +1 次機會</button>}</div></div>}
     </main>
