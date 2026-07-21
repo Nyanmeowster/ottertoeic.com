@@ -368,12 +368,16 @@ export default function Home() {
     const targetLang = accent === "US" ? "en-US" : "en-GB";
     const qualityPattern = /premium|enhanced|natural|neural/i;
     const femalePattern = accent === "US"
-      ? /samantha|victoria|ava|allison|susan|zoe|zira|aria|jenny|michelle|female/i
-      : /serena|kate|hazel|libby|sonia|emma|olivia|moira|fiona|female/i;
+      ? /samantha|victoria|ava|allison|susan|zoe|zira|aria|jenny|michelle|joanna|kendra|kimberly|female/i
+      : /serena|kate|hazel|libby|sonia|emma|olivia|amy|amy uk|brianne|abbi|stephanie|moira|fiona|female|google uk english female/i;
     const normalizedLang = targetLang.toLowerCase();
     const accentVoices = window.speechSynthesis.getVoices().filter((item) => item.lang.toLowerCase().replace("_", "-") === normalizedLang);
-    const voice = accentVoices
-      .sort((a, b) => Number(femalePattern.test(b.name)) - Number(femalePattern.test(a.name)) || Number(qualityPattern.test(b.name)) - Number(qualityPattern.test(a.name)) || Number(b.localService) - Number(a.localService))[0];
+    const voice = accentVoices.filter((item) => femalePattern.test(item.name))
+      .sort((a, b) => Number(qualityPattern.test(b.name)) - Number(qualityPattern.test(a.name)) || Number(b.localService) - Number(a.localService))[0];
+    if (!voice) {
+      window.alert(accent === "UK" ? "此裝置尚未安裝英國女性語音，請先在系統的語音設定中加入 English (United Kingdom) 女聲。" : "此裝置尚未安裝美國女性語音，請先在系統的語音設定中加入 English (United States) 女聲。");
+      return;
+    }
     utterance.lang = targetLang;
     if (voice) utterance.voice = voice;
     utterance.rate = 0.82;
