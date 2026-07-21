@@ -142,7 +142,8 @@ function choicesFor(item: Word) {
 
 export default function Home() {
   const [ready, setReady] = useState(false);
-  const [phase, setPhase] = useState<"assessment" | "learn" | "memory">("assessment");
+  const [phase, setPhase] = useState<"home" | "assessment" | "learn" | "memory">("home");
+  const [assessed, setAssessed] = useState(false);
   const [assessmentIndex, setAssessmentIndex] = useState(0);
   const [assessmentScore, setAssessmentScore] = useState(0);
   const [level, setLevel] = useState<Level>("基礎");
@@ -170,7 +171,7 @@ export default function Home() {
     if (saved) {
       setMemory(saved.memory ?? []);
       setLevel(saved.level ?? "基礎");
-      if (saved.assessed) setPhase("learn");
+      setAssessed(Boolean(saved.assessed));
       setLives(saved.date === dayKey() ? saved.lives : 3);
     }
     setReady(true);
@@ -183,8 +184,8 @@ export default function Home() {
 
   useEffect(() => {
     if (!ready) return;
-    localStorage.setItem("toeic-journal", JSON.stringify({ memory, level, assessed: phase !== "assessment", lives, date: dayKey() }));
-  }, [memory, level, phase, lives, ready]);
+    localStorage.setItem("toeic-journal", JSON.stringify({ memory, level, assessed, lives, date: dayKey() }));
+  }, [memory, level, assessed, lives, ready]);
 
   useEffect(() => {
     if (!adOpen || adSeconds <= 0) return;
@@ -221,6 +222,7 @@ export default function Home() {
         const score = assessmentScore;
         const result: Level = score <= 3 ? "基礎" : score <= 7 ? "中階" : "進階";
         setLevel(result);
+        setAssessed(true);
         setPhase("learn");
       } else setAssessmentIndex((n) => n + 1);
     } else if (!retry.length || retry[0].word !== current.word) setWordIndex((n) => n + 1);
@@ -294,17 +296,30 @@ export default function Home() {
   return (
     <main>
       <header className="topbar">
-        <button className="brand" onClick={() => phase !== "assessment" && setPhase("learn")} aria-label="回到學習">
+        <button className="brand" onClick={() => phase !== "assessment" && setPhase("home")} aria-label="回到主畫面">
           <span className="brand-mark">♛</span><span>OTTER TOEIC<br />SPELLBOOK</span>
         </button>
         <nav>
-          <button disabled={phase === "assessment"} className={phase !== "memory" ? "active" : ""} onClick={() => setPhase("learn")}>今日學習</button>
+          <button disabled={phase === "assessment"} className={phase === "learn" ? "active" : ""} onClick={() => setPhase(assessed ? "learn" : "assessment")}>今日學習</button>
           <button disabled={phase === "assessment"} className={phase === "memory" ? "active" : ""} onClick={() => setPhase("memory")}>回憶錄 <span>{memory.length}</span></button>
         </nav>
         <div className="lives" aria-label={`剩餘 ${lives} 次機會`}><i>♥</i> {lives}<small> / 今日機會</small></div>
       </header>
 
-      {phase === "memory" ? (
+      {phase === "home" ? (
+        <section className="home-page">
+          <div className="home-content">
+            <div className="section-kicker">THE THRONE OF 990</div>
+            <h1>煞氣 a 水獺教教主</h1>
+            <p>挑戰多益單字試煉，把每一次答題刻進你的單字魔法書。</p>
+            <div className="home-actions">
+              <button className="challenge-button" onClick={() => setPhase(assessed ? "learn" : "assessment")}><span>01</span><b>挑戰新單字</b><small>{assessed ? `${level}難度 · 繼續試煉` : "先完成十題程度測驗"}</small><i>→</i></button>
+              <button className="memoir-button" onClick={() => setPhase("memory")}><span>02</span><b>回憶錄</b><small>已收藏 {memory.length} 個單字</small><i>→</i></button>
+            </div>
+          </div>
+          <div className="home-seal"><span>990</span><small>TOEIC THRONE</small></div>
+        </section>
+      ) : phase === "memory" ? (
         <section className="memory-page">
           <div className="section-kicker">THE ARCANE ARCHIVE</div>
           <div className="memory-heading"><div><h1>單字魔法書</h1><p>每一次答題都會刻進魔法書。這裡複習答錯，也不會失去愛心。</p></div><div className="memory-total"><b>{memory.length}</b><span>已收錄咒語</span></div></div>
