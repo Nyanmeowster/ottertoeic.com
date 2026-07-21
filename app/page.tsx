@@ -384,7 +384,7 @@ export default function Home() {
     const source = pronunciationContext.createBufferSource();
     const gain = pronunciationContext.createGain();
     source.buffer = buffer;
-    gain.gain.value = Math.min(2.4, (0.14 / rms) * (accent === "UK" ? 1.44 : 1));
+    gain.gain.value = Math.min(2, 0.14 / rms);
     source.connect(gain).connect(pronunciationContext.destination);
     source.start();
     activePronunciation = source;
