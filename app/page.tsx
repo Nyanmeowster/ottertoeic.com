@@ -307,7 +307,7 @@ export default function Home() {
     <main>
       <header className="topbar">
         <button className="brand" onClick={() => phase !== "assessment" && setPhase("home")} aria-label="回到主畫面">
-          <span className="brand-mark">♛</span><span>OTTER TOEIC<br />SPELLBOOK</span>
+          <span className="brand-mark">♛</span><span>OTTER TOEIC<br />JIANGHU MANUAL</span>
         </button>
         <nav>
           <button disabled={phase === "assessment"} className={phase === "learn" ? "active" : ""} onClick={() => setPhase(assessed ? "learn" : "assessment")}>今日學習</button>
@@ -324,7 +324,7 @@ export default function Home() {
           <div className="home-content">
             <div className="section-kicker">THE THRONE OF 990</div>
             <h1>煞氣 a 水獺教教主</h1>
-            <p>挑戰多益單字試煉，把每一次答題刻進你的單字魔法書。</p>
+            <p>挑戰多益單字試煉，把每一次答題寫入你的江湖秘笈。</p>
             <div className="home-actions">
               <button className="challenge-button" onClick={() => setPhase(assessed ? "learn" : "assessment")}><span>01</span><b>挑戰新單字</b><small>{assessed ? `${level}難度 · 繼續試煉` : "先完成十題程度測驗"}</small><i>→</i></button>
               <button className="memoir-button" onClick={() => setPhase("memory")}><span>02</span><b>回憶錄</b><small>已收藏 {memory.length} 個單字</small><i>→</i></button>
@@ -334,8 +334,8 @@ export default function Home() {
         </section>
       ) : phase === "memory" ? (
         <section className="memory-page">
-          <div className="section-kicker">THE ARCANE ARCHIVE</div>
-          <div className="memory-heading"><div><h1>單字魔法書</h1><p>每一次答題都會刻進魔法書。這裡複習答錯，也不會失去愛心。</p></div><div className="memory-total"><b>{memory.length}</b><span>已收錄咒語</span></div></div>
+          <div className="section-kicker">THE FORBIDDEN JIANGHU ARCHIVE</div>
+          <div className="memory-heading"><div><h1>多益武林秘笈</h1><p>每一次答題都會載入武林秘笈。這裡複習答錯，也不會失去愛心。</p></div><div className="memory-total"><b>{memory.length}</b><span>已收錄招式</span></div></div>
           <div className="filters">
             <button className={filter === "all" ? "selected" : ""} onClick={() => setFilter("all")}>全部 <span>{memory.length}</span></button>
             {(["mastered", "learning", "new"] as Mastery[]).map((key) => { const count = memory.filter((x) => x.mastery === key).length; return <div className="filter-pair" key={key}><button className={filter === key ? "selected" : ""} onClick={() => setFilter(key)}>{LABELS[key]} <span>{count}</span></button><button className="review-launch" disabled={!count} onClick={() => startCategoryReview(key)}>↻ 隨機複習</button></div>; })}
@@ -347,9 +347,9 @@ export default function Home() {
           <aside>
             <div className="section-kicker">{phase === "assessment" ? "THE TRIAL OF TEN" : "TODAY'S QUEST"}</div>
             <h1>{phase === "assessment" ? "踏入 990 分之座" : "今天，征服一個單字。"}</h1>
-            <p>{phase === "assessment" ? "接受十題試煉，水獺教主將辨識你的單字魔力。程度測驗答錯不扣愛心。" : "答對，將單字刻入魔法書；答錯，它會在命運的下一輪再次出現。"}</p>
+            <p>{phase === "assessment" ? "接受十題試煉，水獺教主將辨識你的單字內力。程度測驗答錯不扣愛心。" : "答對，將單字收入武林秘笈；答錯，它會在命運的下一戰再次現身。"}</p>
             <div className="session-stat"><span>{phase === "assessment" ? `${assessmentIndex + 1} / 10` : level}</span><small>{phase === "assessment" ? "程度測驗" : "目前程度"}</small></div>
-            <div className="quote">“Every word is a spell.”</div>
+            <div className="quote">“Every word is a secret technique.”</div>
           </aside>
 
           <div className="quiz-wrap">
