@@ -3,7 +3,7 @@ import react from "@vitejs/plugin-react";
 
 export default defineConfig({
   root: "gh-pages-app",
-  base: "/ottertoeic.com/",
+  base: "/",
   publicDir: "../public",
   plugins: [react()],
   build: {
