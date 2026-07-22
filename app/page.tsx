@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { PDF_WORDS } from "./pdfWords";
 
 type Level = "基礎" | "中階" | "進階";
 type Mastery = "mastered" | "learning" | "new";
-type Word = { word: string; meaning: string; pos: string; example: string; level: Level };
+export type Word = { word: string; meaning: string; pos: string; example: string; level: Level };
 type Memory = Word & { correct: boolean; mastery: Mastery; attempts: number };
 
 const WORDS: Word[] = [
@@ -128,6 +129,7 @@ const WORDS: Word[] = [
   { word: "unprecedented", meaning: "前所未有的", pos: "adj.", example: "The store experienced unprecedented online demand.", level: "進階" },
   { word: "viable", meaning: "可行的；能生存的", pos: "adj.", example: "Remote work is a viable option for the team.", level: "進階" },
   { word: "waive", meaning: "免除；放棄", pos: "v.", example: "The bank agreed to waive the service fee.", level: "進階" },
+  ...PDF_WORDS,
 ];
 
 const AMERICAN_IPA: Record<string, string> = {
@@ -163,6 +165,8 @@ const AMERICAN_IPA: Record<string, string> = {
   substantial: "/səbˈstænʃəl/", unprecedented: "/ʌnˈpresədentɪd/", viable: "/ˈvaɪəbəl/", waive: "/weɪv/",
 };
 
+Object.setPrototypeOf(AMERICAN_IPA, new Proxy({}, { get: () => "/音標待補/" }));
+
 const LABELS: Record<Mastery, string> = { mastered: "融會貫通", learning: "尚在參悟", new: "尚未入門" };
 const BRITISH_IPA_OVERRIDES: Record<string, string> = {
   schedule: "/ˈʃedjuːl/", inventory: "/ˈɪnvəntri/", warehouse: "/ˈweəhaʊs/", purchase: "/ˈpɜːtʃəs/",
@@ -171,8 +175,12 @@ const BRITISH_IPA_OVERRIDES: Record<string, string> = {
   compensation: "/ˌkɒmpənˈseɪʃən/", mandatory: "/ˈmændətəri/", modify: "/ˈmɒdɪfaɪ/",
   postpone: "/pəʊstˈpəʊn/", prohibit: "/prəʊˈhɪbɪt/", obsolete: "/ˌɒbsəˈliːt/",
 };
+function americanIpa(word: string) {
+  return AMERICAN_IPA[word] ?? "/音標待補/";
+}
 function britishIpa(word: string) {
-  return BRITISH_IPA_OVERRIDES[word] ?? AMERICAN_IPA[word].replaceAll("oʊ", "əʊ").replaceAll("ɝː", "ɜː").replaceAll("ɑːr", "ɑː").replaceAll("ɔːr", "ɔː").replaceAll("ər", "ə");
+  const american = AMERICAN_IPA[word];
+  return BRITISH_IPA_OVERRIDES[word] ?? (american ? american.replaceAll("oʊ", "əʊ").replaceAll("ɝː", "ɜː").replaceAll("ɑːr", "ɑː").replaceAll("ɔːr", "ɔː").replaceAll("ər", "ə") : "/音標待補/");
 }
 const MOTIVATIONS = [
   { title: "一字入心，百招皆通。", body: "水獺教主有令：今日多練一字，考場便多一分勝算。" },
@@ -374,28 +382,37 @@ export default function Home() {
   }
 
   async function speakWord(word: string, accent: "US" | "UK") {
-    activePronunciation?.stop();
-    const region = accent === "US" ? "us" : "uk";
-    const path = `${import.meta.env.BASE_URL}audio/${region}/${word}.wav`;
-    pronunciationContext ??= new AudioContext();
-    await pronunciationContext.resume();
-    let buffer = pronunciationCache.get(path);
-    if (!buffer) {
-      const response = await fetch(path);
-      buffer = await pronunciationContext.decodeAudioData(await response.arrayBuffer());
-      pronunciationCache.set(path, buffer);
+    try {
+      activePronunciation?.stop();
+      const region = accent === "US" ? "us" : "uk";
+      const path = `${import.meta.env.BASE_URL}audio/${region}/${word}.wav`;
+      pronunciationContext ??= new AudioContext();
+      await pronunciationContext.resume();
+      let buffer = pronunciationCache.get(path);
+      if (!buffer) {
+        const response = await fetch(path);
+        if (!response.ok) throw new Error("No bundled pronunciation");
+        buffer = await pronunciationContext.decodeAudioData(await response.arrayBuffer());
+        pronunciationCache.set(path, buffer);
+      }
+      const samples = buffer.getChannelData(0);
+      let energy = 0;
+      for (let index = 0; index < samples.length; index += 1) energy += samples[index] * samples[index];
+      const rms = Math.sqrt(energy / samples.length) || 0.1;
+      const source = pronunciationContext.createBufferSource();
+      const gain = pronunciationContext.createGain();
+      source.buffer = buffer;
+      gain.gain.value = Math.min(2, 0.14 / rms);
+      source.connect(gain).connect(pronunciationContext.destination);
+      source.start();
+      activePronunciation = source;
+    } catch {
+      speechSynthesis.cancel();
+      const utterance = new SpeechSynthesisUtterance(word);
+      utterance.lang = accent === "US" ? "en-US" : "en-GB";
+      utterance.rate = 0.82;
+      speechSynthesis.speak(utterance);
     }
-    const samples = buffer.getChannelData(0);
-    let energy = 0;
-    for (let index = 0; index < samples.length; index += 1) energy += samples[index] * samples[index];
-    const rms = Math.sqrt(energy / samples.length) || 0.1;
-    const source = pronunciationContext.createBufferSource();
-    const gain = pronunciationContext.createGain();
-    source.buffer = buffer;
-    gain.gain.value = Math.min(2, 0.14 / rms);
-    source.connect(gain).connect(pronunciationContext.destination);
-    source.start();
-    activePronunciation = source;
   }
 
   function resetProgress() {
