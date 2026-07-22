@@ -131,6 +131,7 @@ const WORDS: Word[] = [
   { word: "waive", meaning: "免除；放棄", pos: "v.", example: "Today's TOEIC lesson introduced the vocabulary item \"waive.\"", exampleZh: "今天的多益課程介紹了「waive（免除；放棄）」這個單字。", level: "進階" },
   ...PDF_WORDS,
 ];
+const WORDS_BY_NAME = new Map(WORDS.map((item) => [item.word, item]));
 
 const AMERICAN_IPA: Record<string, string> = {
   agenda: "/əˈdʒendə/", applicant: "/ˈæplɪkənt/", confirm: "/kənˈfɝːm/", deadline: "/ˈdedlaɪn/",
@@ -239,7 +240,13 @@ export default function Home() {
     const saved = JSON.parse(localStorage.getItem("toeic-journal") || "null");
     if (saved) {
       const hasCurrentAssessment = saved.assessed && saved.assessmentVersion === 1;
-      setMemory(saved.memory ?? []);
+      const refreshedMemory = (Array.isArray(saved.memory) ? saved.memory : [])
+        .map((entry: Memory) => {
+          const currentWord = WORDS_BY_NAME.get(entry.word);
+          return currentWord ? { ...entry, ...currentWord } : null;
+        })
+        .filter((entry: Memory | null): entry is Memory => entry !== null);
+      setMemory(refreshedMemory);
       setLevel(saved.level ?? "基礎");
       setAssessed(Boolean(hasCurrentAssessment));
       setLives(saved.date === dayKey() ? saved.lives : 3);
@@ -447,7 +454,7 @@ export default function Home() {
         <section className="home-page">
           <div className="home-content">
             <div className="section-kicker">THE THRONE OF 990</div>
-            <h1>煞氣 a 水獺教教主</h1>
+            <h1>煞氣a水獺教教主</h1>
             <p>挑戰多益單字試煉，把每一次答題寫入你的江湖秘笈。</p>
             <div className="home-actions">
               <button className="challenge-button" onClick={() => setPhase(assessed ? "learn" : "assessment")}><span>01</span><b>挑戰新單字</b><small>{assessed ? `${level} · 預估 TOEIC ${SCORE_ESTIMATE[level]}` : "先完成十題程度測驗"}</small><i>→</i></button>
