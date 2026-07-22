@@ -436,6 +436,11 @@ export default function Home() {
               <button className="challenge-button" onClick={() => setPhase(assessed ? "learn" : "assessment")}><span>01</span><b>挑戰新單字</b><small>{assessed ? `${level} · 預估 TOEIC ${SCORE_ESTIMATE[level]}` : "先完成十題程度測驗"}</small><i>→</i></button>
               <button className="memoir-button" onClick={() => setPhase("memory")}><span>02</span><b>回憶錄</b><small>已收藏 {memory.length} 個單字</small><i>→</i></button>
             </div>
+            <footer className="legal-links" aria-label="網站資訊">
+              <a href={`${import.meta.env.BASE_URL}about.html`}>關於本站</a>
+              <a href={`${import.meta.env.BASE_URL}privacy.html`}>隱私權政策</a>
+              <a href={`${import.meta.env.BASE_URL}contact.html`}>聯絡我們</a>
+            </footer>
           </div>
         </section>
       ) : phase === "memory" ? (
