@@ -376,7 +376,7 @@ export default function Home() {
   async function speakWord(word: string, accent: "US" | "UK") {
     activePronunciation?.stop();
     const region = accent === "US" ? "us" : "uk";
-    const path = `/audio/${region}/${word}.wav`;
+    const path = `${import.meta.env.BASE_URL}audio/${region}/${word}.wav`;
     pronunciationContext ??= new AudioContext();
     await pronunciationContext.resume();
     let buffer = pronunciationCache.get(path);
