@@ -7,6 +7,7 @@ type Level = "基礎" | "中階" | "進階";
 type Mastery = "mastered" | "learning" | "new";
 export type Word = { word: string; meaning: string; pos: string; example: string; exampleZh: string; level: Level };
 type Memory = Word & { correct: boolean; mastery: Mastery; attempts: number };
+type AccountMode = "guest" | "google";
 
 const WORDS: Word[] = PDF_WORDS;
 const WORDS_BY_NAME = new Map(WORDS.map((item) => [item.word, item]));
@@ -109,6 +110,10 @@ export default function Home() {
   const [adSeconds, setAdSeconds] = useState(5);
   const [levelComplete, setLevelComplete] = useState(false);
   const [motivation, setMotivation] = useState(MOTIVATIONS[0]);
+  const [accountMode, setAccountMode] = useState<AccountMode>("guest");
+  const [accountOpen, setAccountOpen] = useState(false);
+  const [backupReminderDismissed, setBackupReminderDismissed] = useState(false);
+  const [googleSetupNotice, setGoogleSetupNotice] = useState(false);
 
   const assessment = useMemo(() => [WORDS[1], WORDS[3], WORDS[8], WORDS[10], WORDS[12], WORDS[16], WORDS[18], WORDS[21], WORDS[25], WORDS[28]], []);
   const pool = useMemo(() => WORDS.filter((w) => w.level === level), [level]);
@@ -118,6 +123,7 @@ export default function Home() {
 
   useEffect(() => {
     setMotivation(MOTIVATIONS[Math.floor(Math.random() * MOTIVATIONS.length)]);
+    setBackupReminderDismissed(localStorage.getItem("toeic-backup-reminder-dismissed") === "true");
     const saved = JSON.parse(localStorage.getItem("toeic-journal") || "null");
     if (saved) {
       const hasCurrentAssessment = saved.assessed && saved.assessmentVersion === 1;
@@ -346,6 +352,20 @@ export default function Home() {
     window.location.reload();
   }
 
+  function continueAsGuest() {
+    setAccountMode("guest");
+    setAccountOpen(false);
+  }
+
+  function dismissBackupReminder() {
+    localStorage.setItem("toeic-backup-reminder-dismissed", "true");
+    setBackupReminderDismissed(true);
+  }
+
+  function requestGoogleLogin() {
+    setGoogleSetupNotice(true);
+  }
+
   if (!ready) return <main className="loading">正在準備你的單字卡…</main>;
   const visibleMemory = memory
     .filter((x) => filter === "all" || x.mastery === filter)
@@ -363,6 +383,10 @@ export default function Home() {
           <button disabled={phase === "assessment"} className={phase === "memory" ? "active" : ""} onClick={() => setPhase("memory")}>回憶錄 <span>{memory.length}</span></button>
         </nav>
         <div className="topbar-actions">
+          <button className="account-button" onClick={() => { setGoogleSetupNotice(false); setAccountOpen(true); }} aria-label="開啟帳號與備份">
+            <span aria-hidden="true">{accountMode === "google" ? "G" : "客"}</span>
+            <small>{accountMode === "google" ? "已登入" : "訪客"}</small>
+          </button>
           <div className="lives" aria-label={`剩餘 ${lives} 次機會`}><i>♥</i> {lives}<small> / 今日機會</small></div>
           <button className="reset-button" onClick={resetProgress} title="清除所有學習進度">重置</button>
         </div>
@@ -374,6 +398,11 @@ export default function Home() {
             <div className="section-kicker">THE THRONE OF 990</div>
             <h1>煞氣a水獺教教主</h1>
             <p>挑戰多益單字試煉，把每一次答題寫入你的江湖秘笈。</p>
+            <button className="account-status-card" onClick={() => { setGoogleSetupNotice(false); setAccountOpen(true); }}>
+              <span className="account-seal" aria-hidden="true">客</span>
+              <span><b>訪客修練中</b><small>進度目前保存在這台裝置</small></span>
+              <i>帳號與備份 →</i>
+            </button>
             <div className="home-actions">
               <button className="challenge-button" onClick={beginLearning}><span>01</span><b>挑戰新單字</b><small>{assessed ? `${level} · 預估 TOEIC ${SCORE_ESTIMATE[level]}` : "先完成十題程度測驗"}</small><i>→</i></button>
               <button className="memoir-button" onClick={() => setPhase("memory")}><span>02</span><b>回憶錄</b><small>已收藏 {memory.length} 個單字</small><i>→</i></button>
@@ -427,6 +456,38 @@ export default function Home() {
       {reviewWord && <div className="modal-backdrop" onClick={closeReview}><div className="review-modal" onClick={(e) => e.stopPropagation()}><button className="close" onClick={closeReview}>×</button><div className="review-topline"><span className="pos">回憶錄複習{reviewQueue.length ? ` · ${reviewPosition + 1}/${reviewQueue.length}` : ""}</span><span>♥ 不扣愛心</span></div><h2>{reviewWord.word}<small className="word-pos-inline">{reviewWord.pos}</small></h2><div className="word-details"><span><b>美</b>{AMERICAN_IPA[reviewWord.word]}<button className="pronounce-button" onClick={() => speakWord(reviewWord.word, "US")} aria-label={`播放 ${reviewWord.word} 美式發音`}>🔊</button></span><span><b>英</b>{britishIpa(reviewWord.word)}<button className="pronounce-button" onClick={() => speakWord(reviewWord.word, "UK")} aria-label={`播放 ${reviewWord.word} 英式發音`}>🔊</button></span></div><p className="review-prompt">請選出最適合的中文意思</p><div className="answers review-answers">{reviewChoices.map((choice, i) => { const state = reviewSelected ? choice === reviewWord.meaning ? "correct" : choice === reviewSelected ? "wrong" : "muted" : ""; return <button key={choice} className={state} onClick={() => answerReview(choice)}><b>{LETTERS[i]}</b><span>{choice}</span>{state === "correct" && <i>✓</i>}{state === "wrong" && <i>×</i>}</button>; })}</div>{reviewSelected && <><div className={`feedback ${reviewSelected === reviewWord.meaning ? "good" : "bad"}`}><b>{reviewSelected === reviewWord.meaning ? "答對了，記得很清楚！" : `答錯了，正確答案是「${reviewWord.meaning}」`}</b><p><strong>英文例句</strong>{reviewWord.example}</p><p><strong>中文翻譯</strong>{reviewWord.exampleZh}</p></div><div className="review-note">本次複習不扣除任何愛心 · 請重新標記熟悉程度</div><div className="modal-actions">{(["mastered", "learning", "new"] as Mastery[]).map((key) => { const reviewCorrect = reviewSelected === reviewWord.meaning; return <button className={`mastery-${key} ${reviewWord.mastery === key ? "chosen" : ""}`} disabled={key === "mastered" && !reviewCorrect} key={key} onClick={() => { if (key === "mastered" && !reviewCorrect) return; setMemory((list) => list.map((x) => x.word === reviewWord.word ? { ...x, mastery: key } : x)); setReviewWord({ ...reviewWord, mastery: key }); }}>{LABELS[key]}</button>; })}</div>{reviewQueue.length > 0 && <button className="review-next" onClick={nextCategoryReview}>{reviewPosition + 1 >= reviewQueue.length ? "完成這次複習 ✓" : "下一個隨機單字 →"}</button>}</>}</div></div>}
 
       {adOpen && <div className="modal-backdrop"><div className="ad-modal"><div className="ad-label">ADVERTISEMENT</div><div className="fake-ad"><b>FOCUS.</b><p>Good habits build great results.</p></div>{adSeconds > 0 ? <p>廣告將在 {adSeconds} 秒後結束…</p> : <button onClick={finishAd}>領取 +1 次機會</button>}</div></div>}
+
+      {accountOpen && <div className="modal-backdrop account-backdrop" onClick={() => setAccountOpen(false)}>
+        <section className="account-modal" onClick={(event) => event.stopPropagation()} aria-labelledby="account-title">
+          <button className="close" onClick={() => setAccountOpen(false)} aria-label="關閉">×</button>
+          <div className="account-emblem" aria-hidden="true"><span>獺</span></div>
+          <span className="account-kicker">江湖身分冊</span>
+          <h2 id="account-title">守住你的單字修為</h2>
+          <p>登入即可備份江湖修為，換手機也不怕心法盡失。</p>
+          <ul>
+            <li><i>✓</i>同步程度、愛心與回憶錄</li>
+            <li><i>✓</i>更換手機也能接續修練</li>
+            <li><i>✓</i>訪客進度登入後會完整合併</li>
+          </ul>
+          <button className="google-login" onClick={requestGoogleLogin}>
+            <span aria-hidden="true">G</span><b>使用 Google 繼續</b>
+          </button>
+          {googleSetupNotice && <div className="google-setup-note" role="status">
+            <b>Google安全連線尚待啟用</b>
+            <span>介面與資料合併流程已準備完成；設定OAuth憑證及雲端資料庫後即可正式登入。</span>
+          </div>}
+          <button className="guest-login" onClick={continueAsGuest}>先以訪客身分修練</button>
+          <small className="account-privacy">訪客資料只保存在此裝置；App不會取得你的Google密碼。</small>
+        </section>
+      </div>}
+
+      {accountMode === "guest" && memory.length >= 5 && !backupReminderDismissed && !accountOpen && !reviewWord && !adOpen &&
+        <aside className="backup-reminder" aria-label="備份學習進度">
+          <span className="account-seal" aria-hidden="true">客</span>
+          <div><b>少俠已有 {memory.length} 道心法</b><p>登入即可備份江湖修為，換手機也不怕心法盡失。</p></div>
+          <button onClick={() => { setGoogleSetupNotice(false); setAccountOpen(true); }}>備份修為</button>
+          <button className="reminder-close" onClick={dismissBackupReminder} aria-label="暫時關閉提醒">×</button>
+        </aside>}
     </main>
   );
 }
