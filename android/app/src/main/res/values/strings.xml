@@ -1,0 +1,9 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">水獺多益單字</string>
+    <string name="title_activity_main">水獺多益單字</string>
+    <string name="package_name">com.ottertoeic.app</string>
+    <string name="custom_url_scheme">com.ottertoeic.app</string>
+    <!-- Google 官方測試 App ID；正式上架前換成水獺多益單字的 Android AdMob App ID。 -->
+    <string name="admob_app_id">ca-app-pub-3940256099942544~3347511713</string>
+</resources>

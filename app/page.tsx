@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { PDF_WORDS } from "./pdfWords";
+import { isNativeAdMobAvailable, showRewardedHeartAd } from "./admob";
 
 type Level = "基礎" | "中階" | "進階";
 type Mastery = "mastered" | "learning" | "new";
@@ -150,7 +151,7 @@ export default function Home() {
   const [reviewQueue, setReviewQueue] = useState<Memory[]>([]);
   const [reviewPosition, setReviewPosition] = useState(0);
   const [adOpen, setAdOpen] = useState(false);
-  const [adSeconds, setAdSeconds] = useState(5);
+  const [adStatus, setAdStatus] = useState<"idle" | "loading" | "rewarded" | "dismissed" | "web" | "error">("idle");
   const [levelComplete, setLevelComplete] = useState(false);
   const [motivation, setMotivation] = useState(MOTIVATIONS[0]);
   const [accountMode, setAccountMode] = useState<AccountMode>("guest");
@@ -310,12 +311,6 @@ export default function Home() {
     return () => window.clearInterval(timer);
   }, [accountOpen, accountMode]);
 
-  useEffect(() => {
-    if (!adOpen || adSeconds <= 0) return;
-    const timer = window.setTimeout(() => setAdSeconds((n) => n - 1), 1000);
-    return () => window.clearTimeout(timer);
-  }, [adOpen, adSeconds]);
-
   function addMemory(correct: boolean) {
     setMemory((list) => {
       const old = list.find((x) => x.word === current.word);
@@ -391,8 +386,24 @@ export default function Home() {
     setPhase("learn");
   }
 
-  function watchAd() {
-    setAdOpen(true); setAdSeconds(5);
+  async function watchAd() {
+    setAdOpen(true);
+    if (!isNativeAdMobAvailable()) {
+      setAdStatus("web");
+      return;
+    }
+    setAdStatus("loading");
+    try {
+      const result = await showRewardedHeartAd();
+      if (result.status === "rewarded") {
+        setLives((count) => count + 1);
+        setAdStatus("rewarded");
+      } else {
+        setAdStatus(result.status);
+      }
+    } catch {
+      setAdStatus("error");
+    }
   }
 
   function openReview(item: Memory) {
@@ -442,8 +453,10 @@ export default function Home() {
     setMemory((list) => list.map((x) => x.word === reviewWord.word ? { ...x, correct: isCorrect, mastery: isCorrect ? x.mastery : "new", attempts: x.attempts + 1 } : x));
     setReviewWord((item) => item ? { ...item, correct: isCorrect, mastery: isCorrect ? item.mastery : "new", attempts: item.attempts + 1 } : item);
   }
-  function finishAd() {
-    setLives((n) => n + 1); setAdOpen(false); setAdSeconds(5);
+  function closeAdResult() {
+    if (adStatus === "loading") return;
+    setAdOpen(false);
+    setAdStatus("idle");
   }
 
   async function speakWord(word: string, accent: "US" | "UK") {
@@ -644,7 +657,29 @@ export default function Home() {
 
       {reviewWord && <div className="modal-backdrop" onClick={closeReview}><div className="review-modal" onClick={(e) => e.stopPropagation()}><button className="close" onClick={closeReview}>×</button><div className="review-topline"><span className="pos">回憶錄複習{reviewQueue.length ? ` · ${reviewPosition + 1}/${reviewQueue.length}` : ""}</span><span>♥ 不扣愛心</span></div><h2>{reviewWord.word}<small className="word-pos-inline">{reviewWord.pos}</small></h2><div className="word-details"><span><b>美</b>{AMERICAN_IPA[reviewWord.word]}<button className="pronounce-button" onClick={() => speakWord(reviewWord.word, "US")} aria-label={`播放 ${reviewWord.word} 美式發音`}>🔊</button></span><span><b>英</b>{britishIpa(reviewWord.word)}<button className="pronounce-button" onClick={() => speakWord(reviewWord.word, "UK")} aria-label={`播放 ${reviewWord.word} 英式發音`}>🔊</button></span></div><p className="review-prompt">請選出最適合的中文意思</p><div className="answers review-answers">{reviewChoices.map((choice, i) => { const state = reviewSelected ? choice === reviewWord.meaning ? "correct" : choice === reviewSelected ? "wrong" : "muted" : ""; return <button key={choice} className={state} onClick={() => answerReview(choice)}><b>{LETTERS[i]}</b><span>{choice}</span>{state === "correct" && <i>✓</i>}{state === "wrong" && <i>×</i>}</button>; })}</div>{reviewSelected && <><div className={`feedback ${reviewSelected === reviewWord.meaning ? "good" : "bad"}`}><b>{reviewSelected === reviewWord.meaning ? "答對了，記得很清楚！" : `答錯了，正確答案是「${reviewWord.meaning}」`}</b><p><strong>英文例句</strong>{reviewWord.example}</p><p><strong>中文翻譯</strong>{reviewWord.exampleZh}</p></div><div className="review-note">本次複習不扣除任何愛心 · 請重新標記熟悉程度</div><div className="modal-actions">{(["mastered", "learning", "new"] as Mastery[]).map((key) => { const reviewCorrect = reviewSelected === reviewWord.meaning; return <button className={`mastery-${key} ${reviewWord.mastery === key ? "chosen" : ""}`} disabled={key === "mastered" && !reviewCorrect} key={key} onClick={() => { if (key === "mastered" && !reviewCorrect) return; setMemory((list) => list.map((x) => x.word === reviewWord.word ? { ...x, mastery: key } : x)); setReviewWord({ ...reviewWord, mastery: key }); }}>{LABELS[key]}</button>; })}</div>{reviewQueue.length > 0 && <button className="review-next" onClick={nextCategoryReview}>{reviewPosition + 1 >= reviewQueue.length ? "完成這次複習 ✓" : "下一個隨機單字 →"}</button>}</>}</div></div>}
 
-      {adOpen && <div className="modal-backdrop"><div className="ad-modal"><div className="ad-label">ADVERTISEMENT</div><div className="fake-ad"><b>FOCUS.</b><p>Good habits build great results.</p></div>{adSeconds > 0 ? <p>廣告將在 {adSeconds} 秒後結束…</p> : <button onClick={finishAd}>領取 +1 次機會</button>}</div></div>}
+      {adOpen && <div className="modal-backdrop"><div className="ad-modal" role="dialog" aria-modal="true" aria-labelledby="reward-ad-title">
+        {adStatus !== "loading" && <button className="close" onClick={closeAdResult} aria-label="關閉">×</button>}
+        <div className="ad-label">ADMOB REWARDED AD</div>
+        <div className="reward-emblem" aria-hidden="true">♥</div>
+        <h2 id="reward-ad-title">
+          {adStatus === "loading" ? "正在召喚獎勵廣告…" :
+            adStatus === "rewarded" ? "內力已補充" :
+            adStatus === "web" ? "請使用 App 觀看" :
+            adStatus === "dismissed" ? "尚未獲得獎勵" :
+            adStatus === "error" ? "廣告暫時無法載入" : "觀看廣告換愛心"}
+        </h2>
+        <p>
+          {adStatus === "loading" ? "完整觀看廣告後，系統會自動補上 1 顆愛心。" :
+            adStatus === "rewarded" ? "已獲得 1 顆愛心，可以繼續闖關。" :
+            adStatus === "web" ? "Google AdMob 僅支援 Android／iOS 原生 App；網頁版不會播放假廣告或誤發獎勵。" :
+            adStatus === "dismissed" ? "廣告未完整播放，因此沒有扣除或增加愛心。" :
+            adStatus === "error" ? "請檢查網路後再試一次；這次不會扣除愛心。" :
+            "觀看完整獎勵廣告，可獲得 1 顆愛心。"}
+        </p>
+        {adStatus === "rewarded" && <button onClick={closeAdResult}>帶著愛心繼續闖關</button>}
+        {(adStatus === "dismissed" || adStatus === "error") && <button onClick={() => void watchAd()}>重新載入廣告</button>}
+        {adStatus === "web" && <button onClick={closeAdResult}>我知道了</button>}
+      </div></div>}
 
       {accountOpen && <div className="modal-backdrop account-backdrop" onClick={() => setAccountOpen(false)}>
         <section className="account-modal" onClick={(event) => event.stopPropagation()} aria-labelledby="account-title">
