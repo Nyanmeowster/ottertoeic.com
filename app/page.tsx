@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { PDF_WORDS } from "./pdfWords";
 
 type Level = "基礎" | "中階" | "進階";
@@ -8,6 +8,29 @@ type Mastery = "mastered" | "learning" | "new";
 export type Word = { word: string; meaning: string; pos: string; example: string; exampleZh: string; level: Level };
 type Memory = Word & { correct: boolean; mastery: Mastery; attempts: number };
 type AccountMode = "guest" | "google";
+type AccountUser = { id: string; email: string; displayName: string; pictureUrl: string | null };
+type CompactMemory = Pick<Memory, "word" | "correct" | "mastery" | "attempts">;
+type CloudProgress = {
+  memory: CompactMemory[];
+  level: Level;
+  assessed: boolean;
+  assessmentVersion: number;
+  lives: number;
+  date: string;
+};
+
+declare global {
+  interface Window {
+    google?: {
+      accounts: {
+        id: {
+          initialize(options: { client_id: string; callback(response: { credential: string }): void; auto_select?: boolean }): void;
+          renderButton(element: HTMLElement, options: { theme: string; size: string; shape: string; text: string; width: number }): void;
+        };
+      };
+    };
+  }
+}
 
 const WORDS: Word[] = PDF_WORDS;
 const WORDS_BY_NAME = new Map(WORDS.map((item) => [item.word, item]));
@@ -75,12 +98,32 @@ const MOTIVATIONS = [
 const SCORE_ESTIMATE: Record<Level, string> = { 基礎: "350–545", 中階: "550–785", 進階: "790–950" };
 const LEVEL_ORDER: Level[] = ["基礎", "中階", "進階"];
 const LETTERS = ["A", "B", "C", "D"];
+const GOOGLE_CLIENT_ID = "584073661196-dbqod8vr2743gsq58s0qkqbg64podmb5.apps.googleusercontent.com";
 const dayKey = () => new Date().toLocaleDateString("en-CA");
 const mix = <T,>(items: T[]) => [...items].sort(() => Math.random() - 0.5);
 
 function choicesFor(item: Word) {
   const wrong = mix(WORDS.filter((w) => w.meaning !== item.meaning)).slice(0, 3).map((w) => w.meaning);
   return mix([item.meaning, ...wrong]);
+}
+
+function mergeMemories(local: Memory[], cloud: CompactMemory[]) {
+  const merged = new Map<string, Memory>(local.map((item) => [item.word, item]));
+  for (const remote of cloud) {
+    const word = WORDS_BY_NAME.get(remote.word);
+    if (!word) continue;
+    const localItem = merged.get(remote.word);
+    if (!localItem) {
+      merged.set(remote.word, { ...word, ...remote, mastery: remote.mastery === "mastered" && !remote.correct ? "new" : remote.mastery });
+      continue;
+    }
+    const correct = localItem.correct || remote.correct;
+    const mastery: Mastery =
+      correct && (localItem.mastery === "mastered" || remote.mastery === "mastered") ? "mastered" :
+      localItem.mastery === "learning" || remote.mastery === "learning" ? "learning" : "new";
+    merged.set(remote.word, { ...word, correct, mastery, attempts: Math.max(localItem.attempts, remote.attempts) });
+  }
+  return Array.from(merged.values());
 }
 
 let pronunciationContext: AudioContext | null = null;
@@ -114,6 +157,11 @@ export default function Home() {
   const [accountOpen, setAccountOpen] = useState(false);
   const [backupReminderDismissed, setBackupReminderDismissed] = useState(false);
   const [googleSetupNotice, setGoogleSetupNotice] = useState(false);
+  const [accountUser, setAccountUser] = useState<AccountUser | null>(null);
+  const [loginError, setLoginError] = useState("");
+  const [cloudReady, setCloudReady] = useState(false);
+  const [cloudStatus, setCloudStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const googleButtonRef = useRef<HTMLDivElement>(null);
 
   const assessment = useMemo(() => [WORDS[1], WORDS[3], WORDS[8], WORDS[10], WORDS[12], WORDS[16], WORDS[18], WORDS[21], WORDS[25], WORDS[28]], []);
   const pool = useMemo(() => WORDS.filter((w) => w.level === level), [level]);
@@ -175,6 +223,92 @@ export default function Home() {
     if (!ready) return;
     localStorage.setItem("toeic-journal", JSON.stringify({ memory, level, assessed, assessmentVersion: 1, lives, date: dayKey() }));
   }, [memory, level, assessed, lives, ready]);
+
+  useEffect(() => {
+    if (!ready) return;
+    let cancelled = false;
+    async function restoreSession() {
+      try {
+        const sessionResponse = await fetch(`${import.meta.env.BASE_URL}api/auth/session`);
+        if (!sessionResponse.ok) return;
+        const { user } = await sessionResponse.json() as { user: AccountUser | null };
+        if (!user || cancelled) return;
+        setAccountUser(user);
+        setAccountMode("google");
+        const progressResponse = await fetch(`${import.meta.env.BASE_URL}api/progress`);
+        if (progressResponse.ok) {
+          const { progress } = await progressResponse.json() as { progress: CloudProgress | null };
+          if (progress && !cancelled) {
+            const mergedMemory = mergeMemories(memory, progress.memory ?? []);
+            setMemory(mergedMemory);
+            const strongerLevel = LEVEL_ORDER[Math.max(LEVEL_ORDER.indexOf(level), LEVEL_ORDER.indexOf(progress.level ?? "基礎"))];
+            setLevel(strongerLevel);
+            setAssessed(assessed || Boolean(progress.assessed));
+            if (progress.date === dayKey()) setLives(Math.max(lives, progress.lives ?? 0));
+          }
+        }
+        if (!cancelled) setCloudReady(true);
+      } catch {
+        if (!cancelled) setCloudStatus("error");
+      }
+    }
+    void restoreSession();
+    return () => { cancelled = true; };
+  }, [ready]);
+
+  useEffect(() => {
+    if (accountMode !== "google" || !cloudReady) return;
+    setCloudStatus("saving");
+    const timer = window.setTimeout(async () => {
+      const payload: CloudProgress = {
+        memory: memory.map(({ word, correct, mastery, attempts }) => ({ word, correct, mastery, attempts })),
+        level,
+        assessed,
+        assessmentVersion: 1,
+        lives,
+        date: dayKey(),
+      };
+      try {
+        const response = await fetch(`${import.meta.env.BASE_URL}api/progress`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        setCloudStatus(response.ok ? "saved" : "error");
+      } catch {
+        setCloudStatus("error");
+      }
+    }, 700);
+    return () => window.clearTimeout(timer);
+  }, [accountMode, cloudReady, memory, level, assessed, lives]);
+
+  useEffect(() => {
+    if (!accountOpen || accountMode === "google") return;
+    let attempts = 0;
+    const timer = window.setInterval(() => {
+      attempts += 1;
+      if (window.google?.accounts.id && googleButtonRef.current) {
+        window.clearInterval(timer);
+        googleButtonRef.current.replaceChildren();
+        window.google.accounts.id.initialize({
+          client_id: GOOGLE_CLIENT_ID,
+          callback: ({ credential }) => void completeGoogleLogin(credential),
+          auto_select: false,
+        });
+        window.google.accounts.id.renderButton(googleButtonRef.current, {
+          theme: "outline",
+          size: "large",
+          shape: "rectangular",
+          text: "continue_with",
+          width: Math.min(360, window.innerWidth - 74),
+        });
+      } else if (attempts >= 25) {
+        window.clearInterval(timer);
+        setLoginError("Google登入服務載入失敗，請確認網路後重試。");
+      }
+    }, 200);
+    return () => window.clearInterval(timer);
+  }, [accountOpen, accountMode]);
 
   useEffect(() => {
     if (!adOpen || adSeconds <= 0) return;
@@ -362,8 +496,63 @@ export default function Home() {
     setBackupReminderDismissed(true);
   }
 
-  function requestGoogleLogin() {
+  async function completeGoogleLogin(credential: string) {
+    setLoginError("");
     setGoogleSetupNotice(true);
+    try {
+      const response = await fetch(`${import.meta.env.BASE_URL}api/auth/google`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ credential }),
+      });
+      const result = await response.json() as { user?: AccountUser; error?: string };
+      if (!response.ok || !result.user) throw new Error(result.error || "Google登入失敗");
+      setAccountUser(result.user);
+      setAccountMode("google");
+      const progressResponse = await fetch(`${import.meta.env.BASE_URL}api/progress`);
+      if (progressResponse.ok) {
+        const { progress } = await progressResponse.json() as { progress: CloudProgress | null };
+        if (progress) {
+          setMemory((currentMemory) => mergeMemories(currentMemory, progress.memory ?? []));
+          const strongerLevel = LEVEL_ORDER[Math.max(LEVEL_ORDER.indexOf(level), LEVEL_ORDER.indexOf(progress.level ?? "基礎"))];
+          setLevel(strongerLevel);
+          setAssessed(assessed || Boolean(progress.assessed));
+          if (progress.date === dayKey()) setLives((currentLives) => Math.max(currentLives, progress.lives ?? 0));
+        }
+      }
+      setCloudReady(true);
+      setCloudStatus("saving");
+      setGoogleSetupNotice(false);
+      setAccountOpen(false);
+      localStorage.removeItem("toeic-backup-reminder-dismissed");
+      setBackupReminderDismissed(false);
+    } catch (error) {
+      setLoginError(error instanceof Error ? error.message : "Google登入失敗，請稍後重試。");
+      setGoogleSetupNotice(false);
+    }
+  }
+
+  async function logout() {
+    await fetch(`${import.meta.env.BASE_URL}api/auth/logout`, { method: "POST" });
+    setAccountMode("guest");
+    setAccountUser(null);
+    setCloudReady(false);
+    setCloudStatus("idle");
+    setAccountOpen(false);
+  }
+
+  async function deleteAccount() {
+    if (!window.confirm("確定刪除Google會員與所有雲端修為嗎？本機進度仍會保留。")) return;
+    const response = await fetch(`${import.meta.env.BASE_URL}api/auth/account`, { method: "DELETE" });
+    if (!response.ok) {
+      setLoginError("帳號刪除失敗，請稍後重試。");
+      return;
+    }
+    setAccountMode("guest");
+    setAccountUser(null);
+    setCloudReady(false);
+    setCloudStatus("idle");
+    setAccountOpen(false);
   }
 
   if (!ready) return <main className="loading">正在準備你的單字卡…</main>;
@@ -384,8 +573,8 @@ export default function Home() {
         </nav>
         <div className="topbar-actions">
           <button className="account-button" onClick={() => { setGoogleSetupNotice(false); setAccountOpen(true); }} aria-label="開啟帳號與備份">
-            <span aria-hidden="true">{accountMode === "google" ? "G" : "客"}</span>
-            <small>{accountMode === "google" ? "已登入" : "訪客"}</small>
+            {accountUser?.pictureUrl ? <img src={accountUser.pictureUrl} alt="" referrerPolicy="no-referrer" /> : <span aria-hidden="true">{accountMode === "google" ? "G" : "客"}</span>}
+            <small>{accountMode === "google" ? accountUser?.displayName : "訪客"}</small>
           </button>
           <div className="lives" aria-label={`剩餘 ${lives} 次機會`}><i>♥</i> {lives}<small> / 今日機會</small></div>
           <button className="reset-button" onClick={resetProgress} title="清除所有學習進度">重置</button>
@@ -399,8 +588,8 @@ export default function Home() {
             <h1>煞氣a水獺教教主</h1>
             <p>挑戰多益單字試煉，把每一次答題寫入你的江湖秘笈。</p>
             <button className="account-status-card" onClick={() => { setGoogleSetupNotice(false); setAccountOpen(true); }}>
-              <span className="account-seal" aria-hidden="true">客</span>
-              <span><b>訪客修練中</b><small>進度目前保存在這台裝置</small></span>
+              <span className="account-seal" aria-hidden="true">{accountMode === "google" ? "雲" : "客"}</span>
+              <span><b>{accountMode === "google" ? `${accountUser?.displayName ?? "少俠"} · 雲端修練中` : "訪客修練中"}</b><small>{accountMode === "google" ? cloudStatus === "saved" ? "江湖修為已備份" : cloudStatus === "error" ? "雲端同步暫時失敗" : "正在同步江湖修為…" : "進度目前保存在這台裝置"}</small></span>
               <i>帳號與備份 →</i>
             </button>
             <div className="home-actions">
@@ -462,22 +651,31 @@ export default function Home() {
           <button className="close" onClick={() => setAccountOpen(false)} aria-label="關閉">×</button>
           <div className="account-emblem" aria-hidden="true"><span>獺</span></div>
           <span className="account-kicker">江湖身分冊</span>
-          <h2 id="account-title">守住你的單字修為</h2>
-          <p>登入即可備份江湖修為，換手機也不怕心法盡失。</p>
-          <ul>
-            <li><i>✓</i>同步程度、愛心與回憶錄</li>
-            <li><i>✓</i>更換手機也能接續修練</li>
-            <li><i>✓</i>訪客進度登入後會完整合併</li>
-          </ul>
-          <button className="google-login" onClick={requestGoogleLogin}>
-            <span aria-hidden="true">G</span><b>使用 Google 繼續</b>
-          </button>
-          {googleSetupNotice && <div className="google-setup-note" role="status">
-            <b>Google安全連線尚待啟用</b>
-            <span>介面與資料合併流程已準備完成；設定OAuth憑證及雲端資料庫後即可正式登入。</span>
-          </div>}
-          <button className="guest-login" onClick={continueAsGuest}>先以訪客身分修練</button>
-          <small className="account-privacy">訪客資料只保存在此裝置；App不會取得你的Google密碼。</small>
+          {accountMode === "google" && accountUser ? <>
+            <h2 id="account-title">修為已入雲端</h2>
+            <div className="signed-account">
+              {accountUser.pictureUrl ? <img src={accountUser.pictureUrl} alt="" referrerPolicy="no-referrer" /> : <span>G</span>}
+              <div><b>{accountUser.displayName}</b><small>{accountUser.email}</small></div>
+            </div>
+            <p className={`cloud-state ${cloudStatus}`}>{cloudStatus === "saved" ? "✓ 江湖修為已完成備份" : cloudStatus === "error" ? "同步暫時失敗，下一次作答將自動重試" : "正在同步江湖修為…"}</p>
+            <button className="guest-login" onClick={logout}>登出Google帳號</button>
+            <button className="delete-account" onClick={deleteAccount}>刪除會員與雲端修為</button>
+            {loginError && <div className="login-error" role="alert">{loginError}</div>}
+            <small className="account-privacy">登出或刪除雲端帳號都不會清除這台裝置上的訪客進度。</small>
+          </> : <>
+            <h2 id="account-title">守住你的單字修為</h2>
+            <p>登入即可備份江湖修為，換手機也不怕心法盡失。</p>
+            <ul>
+              <li><i>✓</i>同步程度、愛心與回憶錄</li>
+              <li><i>✓</i>更換手機也能接續修練</li>
+              <li><i>✓</i>訪客進度登入後會完整合併</li>
+            </ul>
+            <div className="google-button-slot" ref={googleButtonRef} aria-label="使用 Google 繼續" />
+            {googleSetupNotice && <div className="google-setup-note" role="status"><b>正在驗證Google身分…</b></div>}
+            {loginError && <div className="login-error" role="alert">{loginError}</div>}
+            <button className="guest-login" onClick={continueAsGuest}>先以訪客身分修練</button>
+            <small className="account-privacy">訪客資料只保存在此裝置；App不會取得你的Google密碼。</small>
+          </>}
         </section>
       </div>}
 

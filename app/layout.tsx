@@ -10,6 +10,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
   return (
     <html lang="zh-Hant">
       <head>
+        <script async defer src="https://accounts.google.com/gsi/client" />
         <meta name="google-adsense-account" content="ca-pub-8138757816007679" />
         <script
           async

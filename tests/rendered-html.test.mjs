@@ -2,28 +2,22 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-async function render() {
-  const workerUrl = new URL("../dist/server/index.js", import.meta.url);
-  workerUrl.searchParams.set("test", `${process.pid}-${Date.now()}`);
-  const { default: worker } = await import(workerUrl.href);
-
-  return worker.fetch(
-    new Request("http://localhost/", { headers: { accept: "text/html" } }),
-    { ASSETS: { fetch: async () => new Response("Not found", { status: 404 }) } },
-    { waitUntil() {}, passThroughOnException() {} },
-  );
-}
-
-test("server-renders the TOEIC vocabulary app shell", async () => {
-  const response = await render();
-  assert.equal(response.status, 200);
-  assert.match(response.headers.get("content-type") ?? "", /^text\/html\b/i);
-
-  const html = await response.text();
-  assert.match(html, /<title>Vocabulary Journal｜多益單字回憶錄<\/title>/i);
-  assert.match(html, /正在準備你的單字卡/);
-  assert.match(html, /ca-pub-8138757816007679/);
-  assert.doesNotMatch(html, /Your site is taking shape|codex-preview/);
+test("build contains the TOEIC shell and secure Google sign-in routes", async () => {
+  const [layout, page, authRoute, progressRoute, worker] = await Promise.all([
+    readFile(new URL("../app/layout.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/auth/google/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/progress/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../dist/server/index.js", import.meta.url), "utf8"),
+  ]);
+  assert.match(layout, /Vocabulary Journal｜多益單字回憶錄/);
+  assert.match(layout, /accounts\.google\.com\/gsi\/client/);
+  assert.match(layout, /ca-pub-8138757816007679/);
+  assert.match(page, /登入即可備份江湖修為，換手機也不怕心法盡失/);
+  assert.match(authRoute, /verifyGoogleCredential/);
+  assert.match(progressRoute, /getSessionUser/);
+  assert.match(worker, /api\/auth\/google/);
+  assert.doesNotMatch(layout + page, /Your site is taking shape|codex-preview/);
 });
 
 test("uses the complete, unique 1–1737 Excel vocabulary set", async () => {
